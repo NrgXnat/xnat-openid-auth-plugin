@@ -76,6 +76,11 @@ configurations {
         exclude group: "javax.sql", module: "jdbc-stdext"
         exclude group: "javax.transaction", module: "jta"
     }
+    testCompile {
+        exclude group: "org.slf4j", module: "slf4j-log4j12"
+        exclude group: "org.slf4j", module: "slf4j-simple"
+        exclude group: "edu.ucar", module: "netcdf"
+    }
 }
 
 dependencyManagement.imports {
@@ -105,6 +110,10 @@ dependencies {
 
     testImplementation "junit:junit"
     testImplementation "org.springframework:spring-test"
+    testImplementation "org.nrg.xnat:web:${vXnat}"
+    testCompile "com.github.tomakehurst:wiremock:2.21.0"
+    testCompile group: 'org.mockito', name: 'mockito-core', version: '2.25.0'
+    
 }
 
 if (hasProperty("rt.17.jar")) {

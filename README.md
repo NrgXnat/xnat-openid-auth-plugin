@@ -58,6 +58,10 @@ To build the XNAT OpenID authentication provider plugin:
 
 1. If you haven't already, clone [this repository](https://github.com/qcif/xnat-openid-auth-plugin.git) and cd to the newly cloned folder.
 
+1. Optionally run the tests:    
+
+    `./gradlew clean test`
+
 1. Build the plugin:
 
     `./gradlew clean fatJar`
@@ -65,6 +69,7 @@ To build the XNAT OpenID authentication provider plugin:
     On Windows, you can use the batch file:
 
     `gradlew.bat clean fatJar`
+
 
   This should build the plugin in the file **build/libs/xnat-openid-auth-plugin-all-_1.0.0-SNAPSHOT_.jar** (the version may differ based on updates to the code).
 
@@ -130,6 +135,9 @@ Flag to set the `enabled` property of new users, set to false to allow admins to
 
 ### openid.`providerId`.userAutoVerified
 Flag to set the `verified` property of new users.
+
+### openid.`providerId`.userInfoUri
+The optional URI of the UserInfo endpoint. If present then a call will be exchanged to this endpoint to collect additional information about the user.
 
 ### openid.`providerId`.*Property
 The property names used to populate user information during user creation. These are the property names from the information returned from the authentication provider.
