@@ -17,90 +17,156 @@
  */
 package au.edu.qcif.xnat.auth.openid;
 
+import java.lang.reflect.Field;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import org.apache.axis.utils.StringUtils;
 import org.nrg.xdat.security.XDATUser;
+import org.nrg.xnat.security.XnatAuthenticationFilter;
 import org.springframework.security.oauth2.common.OAuth2AccessToken;
+
+import static au.edu.qcif.xnat.auth.openid.etc.OpenIdAuthConstant.*;
 
 /**
  * OIDC user details
- * 
+ *
  * @author <a href='https://github.com/shilob'>Shilo Banihit</a>
- * 
  */
 public class OpenIdConnectUserDetails extends XDATUser {
 
-	private static final long serialVersionUID = 1L;
-	private OAuth2AccessToken token;
-	private String email;
-	private Map<String, String> openIdUserInfo;
-	private String name;
-	private String picture;
-	private String firstName;
-	private String lastName;
-	private String pw;
-	private String username;
-	private String providerId;
-	private OpenIdAuthPlugin plugin;
+    private static final long serialVersionUID = 1L;
+    private static final String DEFAULT_USERNAME_PATTERN = "[providerId]_[sub]";
 
-	public OpenIdConnectUserDetails(String providerId, Map<String, String> userInfo, OAuth2AccessToken token,
-			OpenIdAuthPlugin plugin) {
-		this.openIdUserInfo = userInfo;
-		this.providerId = providerId;
-		this.setUsername(providerId + "_" + userInfo.get("sub"));
-		this.token = token;
-		this.plugin = plugin;
+    private OAuth2AccessToken token;
+    private String email;
+    private Map<String, String> openIdUserInfo;
+    private String name;
+    private String picture;
+    private String firstName;
+    private String lastName;
+    private String pw;
+    private String username;
+    private String providerId;
+    private OpenIdAuthPlugin plugin;
 
-		this.email = getUserInfo(userInfo, "emailProperty", "");
-		this.setFirstname(getUserInfo(userInfo, "givenNameProperty", ""));
-		this.setLastname(getUserInfo(userInfo, "familyNameProperty", ""));
-		this.name = userInfo.get("name");
-		this.picture = userInfo.get("picture");
-	}
+    public OpenIdConnectUserDetails(
+            String providerId,
+            Map<String, String> userInfo,
+            OAuth2AccessToken token,
+            OpenIdAuthPlugin plugin) {
+        this.openIdUserInfo = userInfo;
+        this.providerId = providerId;
+        this.setUsername(resolvePattern(plugin.getProperty(providerId, USERNAME_PATTERN)));
+        this.token = token;
+        this.plugin = plugin;
 
-	private String getUserInfo(Map<String, String> userInfo, String propName, String defaultVal) {
-		String propVal = userInfo.get(plugin.getProperty(providerId, propName));
-		return propVal != null ? propVal : defaultVal;
-	}
+        this.email = getUserInfo(userInfo, EMAIL, "");
+        this.setFirstname(getUserInfo(userInfo, GIVEN_NAME, ""));
+        this.setLastname(getUserInfo(userInfo, FAMILY_NAME, ""));
+        this.name = userInfo.get("name");
+        this.picture = userInfo.get("picture");
+    }
 
-	public OAuth2AccessToken getToken() {
-		return token;
-	}
+    private String getUserInfo(Map<String, String> userInfo, String propName, String defaultVal) {
+        String propVal = userInfo.get(plugin.getProperty(providerId, propName));
+        return propVal != null ? propVal : defaultVal;
+    }
 
-	public void setToken(OAuth2AccessToken token) {
-		this.token = token;
-	}
+    private String resolvePattern(String usernamePattern) {
+        if (StringUtils.isEmpty(usernamePattern)) {
+            usernamePattern = DEFAULT_USERNAME_PATTERN;
+        }
 
-	public void setUsername(String username) {
-		this.username = username;
-	}
+        Pattern pattern = Pattern.compile("\\[([a-zA-Z0-9]+)\\]");
+        Matcher m = pattern.matcher(usernamePattern);
 
-	public String getUsername() {
-		return username;
-	}
+        HashMap<String, String> pairs = new HashMap<>();
 
-	public String getFirstname() {
-		return firstName;
-	}
+        int idx = 0;
+        while (m.find(idx)) {
+            String raw = m.group(0);
+            String variableName = m.group(1);
 
-	public String getLastname() {
-		return lastName;
-	}
+            pairs.put(raw, variableName);
+            idx = m.end();
+        }
 
-	public String getEmail() {
-		return this.email;
-	}
+        String converted = usernamePattern;
+        for (String key : pairs.keySet()) {
+            String fieldName = pairs.get(key);
+            String value = getFieldValue(fieldName);
+            converted = converted.replace(key, value);
+        }
+        return converted;
+    }
 
-	public void setEmail(String e) {
-		this.email = e;
-	}
+    public String getFieldValue(String fieldName) {
+        String value = null;
+        try {
+            Field field = this.getClass().getDeclaredField(fieldName);
+            value = (String) field.get(this);
+        } catch (Exception e) {
+            if (openIdUserInfo != null) {
+                value = openIdUserInfo.get(fieldName);
+            }
+        }
+        return value;
+    }
 
-	public void setFirstname(String firstname) {
-		this.firstName = firstname;
-	}
+    public String getOpenIdUserInfo(String propName) {
+        return getOpenIdUserInfo(propName, null);
+    }
 
-	public void setLastname(String lastname) {
-		this.lastName = lastname;
-	}
+    public String getOpenIdUserInfo(String propName, String defaultVal) {
+        if (openIdUserInfo == null) {
+            return defaultVal;
+        }
+
+        String propVal = openIdUserInfo.get(plugin.getProperty(providerId, propName));
+        return propVal != null ? propVal : defaultVal;
+    }
+
+    public OAuth2AccessToken getToken() {
+        return token;
+    }
+    
+    public void setToken(OAuth2AccessToken token) {
+        this.token = token;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public String getFirstname() {
+        return firstName;
+    }
+
+    public String getLastname() {
+        return lastName;
+    }
+
+    public String getEmail() {
+        return this.email;
+    }
+
+    public void setEmail(String e) {
+        this.email = e;
+    }
+
+    public void setFirstname(String firstname) {
+        this.firstName = firstname;
+    }
+
+    public void setLastname(String lastname) {
+        this.lastName = lastname;
+    }
 
 }
