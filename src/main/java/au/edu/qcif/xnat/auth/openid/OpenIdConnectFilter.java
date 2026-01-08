@@ -19,8 +19,11 @@ package au.edu.qcif.xnat.auth.openid;
 
 import au.edu.qcif.xnat.auth.openid.tokens.OpenIdAuthRequestToken;
 import au.edu.qcif.xnat.auth.openid.tokens.OpenIdAuthToken;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import lombok.extern.slf4j.Slf4j;
+
 import org.apache.commons.collections.ListUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.nrg.framework.generics.GenericUtils;
@@ -61,13 +64,17 @@ import org.springframework.security.web.authentication.session.SessionAuthentica
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static org.nrg.xdat.services.XdatUserAuthService.OPENID;
 
 /**
  * Main Spring Security authentication filter.
@@ -79,6 +86,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class OpenIdConnectFilter extends AbstractAuthenticationProcessingFilter {
     private static final List<String> ALL_DOMAINS = Collections.singletonList("*");
+    private static final String CONFIG_REGEX_FILTER_PREFIX = "regexFilter.";
 
     private final OpenIdAuthPlugin             _plugin;
     private final AuthenticationEventPublisher _eventPublisher;
@@ -167,7 +175,11 @@ public class OpenIdConnectFilter extends AbstractAuthenticationProcessingFilter 
 
         final String userInfoUri = _plugin.getProperty(providerId, "userInfoUri");
         if (!StringUtils.isEmpty(userInfoUri)) {
+            log.debug("Getting User Info from {} using token {}", userInfoUri, accessToken.getValue());
             Map<String, String> userInfo = getUserInfo(accessToken.getValue(), userInfoUri);
+            for (String key : userInfo.keySet()) {
+                log.debug("User Info: {} = {}", key, userInfo.get(key));
+            }
             authInfo.putAll(userInfo);
         }
         final OpenIdConnectUserDetails user = new OpenIdConnectUserDetails(providerId, authInfo, accessToken, _plugin);
@@ -177,6 +189,9 @@ public class OpenIdConnectFilter extends AbstractAuthenticationProcessingFilter 
         }
         if (!_plugin.isEnabled(providerId)) {
             throw new NewAutoAccountNotAutoEnabledException("OpenID provider is not enabled", user);
+        }
+        if (!passesRegexFilters(authInfo, providerId)) {
+            throw new NewAutoAccountNotAutoEnabledException("New OpenID user, did not pass regex filters.", user);
         }
 
         log.debug("Checking if user exists...");
@@ -242,6 +257,34 @@ public class OpenIdConnectFilter extends AbstractAuthenticationProcessingFilter 
             log.warn("Ignoring exception:", ex2);
         }
         return xdatUser;
+    }
+
+    /**
+     * Checks whether the user info passes all regex filters defined in the plugin configuration for the given provider.
+     */
+    private boolean passesRegexFilters(final Map<String, String> userInfo, final String providerId) {
+        Properties props = _plugin.getProps();
+        String prefix = String.join(".", OPENID, providerId, CONFIG_REGEX_FILTER_PREFIX);
+        for (Map.Entry<Object, Object> entry : props.entrySet()) {
+            Object objKey = entry.getKey();
+            if (objKey instanceof String) {
+                String key = (String) objKey;
+                if (key.startsWith(prefix)) {
+                    Object objValue = entry.getValue();
+                    if (objValue instanceof String) {
+                        String value = (String) objValue;
+                        log.debug("Applying regex filter {} = {} for provider {}", key, value, providerId);
+                        String fieldName = key.substring(prefix.length());
+                        String fieldValue = userInfo.get(fieldName);
+                        if (fieldValue == null || !fieldValue.matches(value)) {
+                            log.error("User info field {} with value {} did not pass regex filter {} for provider {}", fieldName, fieldValue, value, providerId);
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     private boolean shouldFilterEmailDomains(final String providerId) {
