@@ -50,6 +50,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.jwt.Jwt;
 import org.springframework.security.jwt.JwtHelper;
 import org.springframework.security.oauth2.client.OAuth2RestTemplate;
+import org.springframework.security.oauth2.common.DefaultOAuth2AccessToken;
 import org.springframework.security.oauth2.common.OAuth2AccessToken;
 import org.springframework.security.oauth2.common.exceptions.OAuth2Exception;
 import org.springframework.security.oauth2.config.annotation.web.configuration.EnableOAuth2Client;
@@ -64,6 +65,7 @@ import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -140,23 +142,48 @@ public class OpenIdConnectFilter extends AbstractAuthenticationProcessingFilter 
             }
         }
 
-        OAuth2AccessToken accessToken;
-        try {
-            log.debug("Getting access token...");
-            accessToken = _restTemplate.getAccessToken();
-            log.debug("Got access token!!! {}", accessToken);
-        } catch (final OAuth2Exception e) {
-            log.debug("Could not obtain access token", e);
-            log.debug("<<---------------------------->>");
-            e.printStackTrace();
-            throw new BadCredentialsException("Could not obtain access token", e);
-        } catch (final RuntimeException ex2) {
-            log.debug("Runtime exception", ex2);
-            log.debug("----------------------------");
-            throw ex2;
-        }
 
         String providerId = (String) request.getSession().getAttribute("providerId");
+        if (providerId == null) {
+            providerId = (String) request.getParameter("providerId");
+            if (providerId == null) {
+                providerId = (String) request.getHeader("X-XNAT-OPENID-PROVIDER");
+            }
+        }
+        if (providerId == null) {
+            throw new BadCredentialsException("No OpenID provider specified in session, request parameter, or header.");
+        }
+        request.getSession().setAttribute("providerId", providerId);
+
+        OAuth2AccessToken accessToken;
+
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            log.debug("Found access token in header");
+            String token = authHeader.substring(7);
+            DefaultOAuth2AccessToken defAccessToken = new DefaultOAuth2AccessToken(token);
+            accessToken = defAccessToken;
+            Map<String, Object> additionalInfo = new HashMap<>();
+            additionalInfo.put("id_token", token);
+            defAccessToken.setAdditionalInformation(additionalInfo);
+            _restTemplate.getOAuth2ClientContext().setAccessToken(accessToken);
+        } else {
+
+            try {
+                log.debug("Getting access token...");
+                accessToken = _restTemplate.getAccessToken();
+                log.debug("Got access token!!! {}", accessToken);
+            } catch (final OAuth2Exception e) {
+                log.debug("Could not obtain access token", e);
+                log.debug("<<---------------------------->>");
+                e.printStackTrace();
+                throw new BadCredentialsException("Could not obtain access token", e);
+            } catch (final RuntimeException ex2) {
+                log.debug("Runtime exception", ex2);
+                log.debug("----------------------------");
+                throw ex2;
+            }
+        }
 
         log.debug("Getting idToken...");
         final String idToken      = accessToken.getAdditionalInformation().get("id_token").toString();

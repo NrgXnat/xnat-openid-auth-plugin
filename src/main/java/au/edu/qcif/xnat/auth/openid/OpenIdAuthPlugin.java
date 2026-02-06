@@ -139,9 +139,8 @@ public class OpenIdAuthPlugin extends BaseXnatSecurityExtension {
         final HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
         // Interrogate request to get providerId (e.g. look at url if nothing
         // else)
-        String providerId = request.getParameter("providerId");
+        String providerId = (String) request.getSession().getAttribute("providerId");
         log.debug("Provider id is: {}", providerId);
-        request.getSession().setAttribute("providerId", providerId);
         final OAuth2RestTemplate template = new OAuth2RestTemplate(getProtectedResourceDetails(providerId), clientContext);
         template.setAccessTokenProvider(ACCESS_TOKEN_PROVIDER_CHAIN);
         return template;
